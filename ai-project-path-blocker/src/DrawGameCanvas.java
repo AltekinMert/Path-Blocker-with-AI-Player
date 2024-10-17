@@ -5,39 +5,34 @@ import java.awt.image.BufferedImage;
 import java.io.*;
 import javax.imageio.ImageIO;
 import javax.swing.*;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import javax.swing.Timer;
+import java.util.List;
 
 public class DrawGameCanvas extends JPanel {
-    private int[][] matrix;
-    private final int cellSize = 30; // Boyutlar her bir hücre için
+    private char[][] matrix;
+    private final int cellSize = 30; // Size for each cell
     private int playerX, playerY;
     private String levelFolder;
-    private int currentLevel = 1; // Başlangıç seviyesi
+    private int currentLevel = 1; // Starting level
     private String currentLevelFolder = "level01";
     private int moveCount = 0; // Counter for the number of moves
-    private List<List<int[]>> moveHistory = new ArrayList<>(); // Hareket geçmişi (geri alma için)
+    private List<List<int[]>> moveHistory = new ArrayList<>(); // Move history for undo
+    private boolean isAIPlayer = false; // Flag to check if AI is playing
 
-    public DrawGameCanvas(int[][] matrix, String levelFolder) {
+    public DrawGameCanvas(char[][] matrix, String levelFolder) {
         this.matrix = matrix;
         this.levelFolder = levelFolder;
-        // Find the starting position 'X'
-        for (int i = 0; i < matrix.length; i++) {
-            for (int j = 0; j < matrix[i].length; j++) {
-                if (matrix[i][j] == 'X') {
-                    playerX = j;
-                    playerY = i;
-                    matrix[i][j] = 0; // Make the starting point walkable
-                }
-            }
-        }
+        initializePlayerPosition();
         setFocusable(true);
         addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
+                if (isAIPlayer)
+                    return; // Ignore key presses if AI is playing
                 switch (e.getKeyCode()) {
                     case KeyEvent.VK_W -> movePlayer(0, -1, true); // W key
                     case KeyEvent.VK_A -> movePlayer(-1, 0, true); // A key
@@ -50,6 +45,29 @@ public class DrawGameCanvas extends JPanel {
         });
     }
 
+    private void initializePlayerPosition() {
+        int[] startPos = findStartingPosition(matrix);
+        if (startPos != null) {
+            playerX = startPos[0];
+            playerY = startPos[1];
+        } else {
+            // Handle error: No starting position found
+            JOptionPane.showMessageDialog(this, "No starting position 'X' found.", "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private int[] findStartingPosition(char[][] matrix) {
+        for (int i = 0; i < matrix.length; i++) {
+            for (int j = 0; j < matrix[i].length; j++) {
+                if (matrix[i][j] == 'X') {
+                    matrix[i][j] = '0'; // Make the starting point walkable
+                    return new int[] { j, i };
+                }
+            }
+        }
+        return null;
+    }
+
     private void movePlayer(int dx, int dy, boolean continuous) {
         boolean moved = false;
         List<int[]> currentMove = new ArrayList<>();
@@ -59,9 +77,9 @@ public class DrawGameCanvas extends JPanel {
 
             // Check boundaries and if the new position is walkable or is the goal 'Y'
             if (newX >= 0 && newX < matrix[0].length && newY >= 0 && newY < matrix.length
-                    && (matrix[newY][newX] == 0 || matrix[newY][newX] == 'Y')) {
+                    && (matrix[newY][newX] == '0' || matrix[newY][newX] == 'Y')) {
                 // Mark the current position as a wall
-                matrix[playerY][playerX] = 1;
+                matrix[playerY][playerX] = '1';
                 // Save the current position to the current move for undo
                 currentMove.add(new int[] { playerX, playerY });
                 // Update player position
@@ -69,9 +87,11 @@ public class DrawGameCanvas extends JPanel {
                 playerY = newY;
                 moved = true;
 
-                // If the player reaches 'Y', replace 'Y' with 'X'
+                // If the player reaches 'Y', set a flag or handle level completion
                 if (matrix[playerY][playerX] == 'Y') {
-                    matrix[playerY][playerX] = 0;
+                    // Level completed
+                    matrix[playerY][playerX] = '0'; // Optional: Make the goal walkable
+                    break; // Stop moving after reaching the goal
                 }
             } else {
                 break;
@@ -107,27 +127,28 @@ public class DrawGameCanvas extends JPanel {
         }
         try {
             String filePath = "levels/level" + String.format("%02d", currentLevel) + ".txt";
-            int[][] newMatrix = readMatrixFromFile(filePath);
+            char[][] newMatrix = readMatrixFromFile(filePath);
             this.matrix = newMatrix;
-            // Reset player position
-            for (int i = 0; i < matrix.length; i++) {
-                for (int j = 0; j < matrix[i].length; j++) {
-                    if (matrix[i][j] == 'X') {
-                        playerX = j;
-                        playerY = i;
-                        matrix[i][j] = 0; // Make the starting point walkable
-                    }
-                }
-            }
+            initializePlayerPosition();
             moveHistory.clear(); // Clear move history
             moveCount = 0;
             repaint();
+
+            // Reset AI variables and restart AI movement if necessary
+            if (isAIPlayer) {
+                aiMoveIndex = 0;
+                aiPath = null;
+                startAIMovement();
+            }
+
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     private void undoLastMove() {
+        if (isAIPlayer)
+            return; // Do not allow undo if AI is playing
         if (!moveHistory.isEmpty()) {
             // Remove the latest screenshot of the current level
             try {
@@ -144,7 +165,7 @@ public class DrawGameCanvas extends JPanel {
             List<int[]> lastMove = moveHistory.remove(moveHistory.size() - 1);
             // Restore all the player's previous positions in the last move
             for (int[] position : lastMove) {
-                matrix[position[1]][position[0]] = 0; // Make the position walkable again
+                matrix[position[1]][position[0]] = '0'; // Make the position walkable again
             }
             // Set player position back to the last point before the move
             if (!lastMove.isEmpty()) {
@@ -152,6 +173,7 @@ public class DrawGameCanvas extends JPanel {
                 playerX = lastPosition[0];
                 playerY = lastPosition[1];
             }
+            moveCount--; // Decrement move count
             repaint();
         }
     }
@@ -163,21 +185,19 @@ public class DrawGameCanvas extends JPanel {
             String filePath = "levels/level" + String.format("%02d", currentLevel) + ".txt";
             Path path = Paths.get(filePath);
             if (Files.exists(path)) {
-                int[][] newMatrix = readMatrixFromFile(filePath);
+                char[][] newMatrix = readMatrixFromFile(filePath);
                 this.matrix = newMatrix;
-                // Reset player position
-                for (int i = 0; i < matrix.length; i++) {
-                    for (int j = 0; j < matrix[i].length; j++) {
-                        if (matrix[i][j] == 'X') {
-                            playerX = j;
-                            playerY = i;
-                            matrix[i][j] = 0; // Make the starting point walkable
-                        }
-                    }
-                }
+                initializePlayerPosition();
                 moveHistory.clear(); // Clear move history
                 moveCount = 0;
                 repaint();
+
+                // Reset AI variables and restart AI movement if necessary
+                if (isAIPlayer) {
+                    aiMoveIndex = 0;
+                    aiPath = null;
+                    startAIMovement();
+                }
             } else {
                 System.out.println("All levels completed!");
             }
@@ -211,12 +231,12 @@ public class DrawGameCanvas extends JPanel {
             for (int j = 0; j < matrix[i].length; j++) {
                 if (i == playerY && j == playerX) {
                     g.setColor(Color.YELLOW); // Player position
-                } else if (matrix[i][j] == 1) {
-                    g.setColor(Color.DARK_GRAY); // Duvarlar
+                } else if (matrix[i][j] == '1') {
+                    g.setColor(Color.DARK_GRAY); // Walls
                 } else if (matrix[i][j] == 'Y') {
-                    g.setColor(Color.BLACK); // Bitiş noktasi
+                    g.setColor(Color.RED); // Goal point
                 } else {
-                    g.setColor(Color.LIGHT_GRAY); // Boş alanlar
+                    g.setColor(Color.LIGHT_GRAY); // Empty spaces
                 }
                 g.fillRect(j * cellSize, i * cellSize, cellSize, cellSize);
                 g.setColor(Color.BLACK);
@@ -244,26 +264,229 @@ public class DrawGameCanvas extends JPanel {
         }
     }
 
-    public static int[][] readMatrixFromFile(String filePath) throws IOException {
-        List<int[]> matrixList = new ArrayList<>();
+    public static char[][] readMatrixFromFile(String filePath) throws IOException {
+        List<char[]> matrixList = new ArrayList<>();
         try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
             String line;
             while ((line = br.readLine()) != null) {
-                String[] tokens = line.split(" ");
-                int[] row = new int[tokens.length];
+                line = line.trim();
+                String[] tokens = line.split("\\s+");
+                char[] row = new char[tokens.length];
                 for (int i = 0; i < tokens.length; i++) {
-                    if (tokens[i].equals("X")) {
-                        row[i] = 'X';
-                    } else if (tokens[i].equals("Y")) {
-                        row[i] = 'Y';
-                    } else {
-                        row[i] = Integer.parseInt(tokens[i]);
-                    }
+                    row[i] = tokens[i].charAt(0);
                 }
                 matrixList.add(row);
             }
         }
-        return matrixList.toArray(new int[0][]);
+        return matrixList.toArray(new char[0][]);
+    }
+
+    // AI Implementation
+    private List<String> aiPath; // The path that the AI will follow
+    private int aiMoveIndex = 0; // The current move index in the aiPath
+
+    public void startAIMovement() {
+        isAIPlayer = true;
+
+        // Ensure the matrix is in its initial state before finding the path
+        // Reload the matrix from the file to avoid any modifications made during
+        // gameplay
+        try {
+            String filePath = "levels/level" + String.format("%02d", currentLevel) + ".txt";
+            char[][] initialMatrix = readMatrixFromFile(filePath);
+
+            // Deep copy to avoid modifying the original matrix
+            char[][] matrixCopy = deepCopyMatrix(initialMatrix);
+
+            // Find the starting position in initialMatrix
+            int[] startPos = findStartingPosition(matrixCopy);
+            if (startPos == null) {
+                JOptionPane.showMessageDialog(this, "No starting position 'X' found.", "Error",
+                        JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            int startX = startPos[0];
+            int startY = startPos[1];
+
+            // Update playerX and playerY to match the starting position
+            playerX = startX;
+            playerY = startY;
+
+            // Find the shortest path
+            aiPath = findShortestPath(matrixCopy, startX, startY);
+            if (aiPath == null) {
+                JOptionPane.showMessageDialog(this, "No path found by AI.", "Info", JOptionPane.INFORMATION_MESSAGE);
+                return;
+            }
+
+            // Print the path to the console for debugging
+            System.out.println("AI Path for Level " + currentLevel + ": " + String.join(" -> ", aiPath));
+
+            // Reset AI movement index
+            aiMoveIndex = 0;
+
+            // Use a Timer to perform moves step by step
+            Timer timer = new Timer(500, e -> {
+                if (aiMoveIndex < aiPath.size()) {
+                    String move = aiPath.get(aiMoveIndex);
+                    switch (move) {
+                        case "up" -> movePlayer(0, -1, true);
+                        case "down" -> movePlayer(0, 1, true);
+                        case "left" -> movePlayer(-1, 0, true);
+                        case "right" -> movePlayer(1, 0, true);
+                    }
+                    aiMoveIndex++;
+                } else {
+                    ((Timer) e.getSource()).stop();
+                }
+            });
+            timer.start();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private List<String> findShortestPath(char[][] initialMatrix, int startX, int startY) {
+        // Directions: left, right, up, down
+        int[] dx = { -1, 1, 0, 0 };
+        int[] dy = { 0, 0, -1, 1 };
+        String[] dirNames = { "left", "right", "up", "down" };
+
+        class State {
+            int x, y;
+            BitSet gridState;
+            List<String> path;
+
+            State(int x, int y, BitSet gridState, List<String> path) {
+                this.x = x;
+                this.y = y;
+                this.gridState = gridState;
+                this.path = path;
+            }
+
+            @Override
+            public int hashCode() {
+                int result = Objects.hash(x, y);
+                result = 31 * result + gridState.hashCode();
+                return result;
+            }
+
+            @Override
+            public boolean equals(Object obj) {
+                if (!(obj instanceof State))
+                    return false;
+                State other = (State) obj;
+                return this.x == other.x && this.y == other.y && this.gridState.equals(other.gridState);
+            }
+        }
+
+        Queue<State> queue = new LinkedList<>();
+        Map<State, Integer> visited = new HashMap<>();
+
+        // Ensure we're using the initial matrix for pathfinding
+        BitSet initialGridState = gridToBitSet(initialMatrix);
+        List<String> initialPath = new ArrayList<>();
+
+        State initialState = new State(startX, startY, initialGridState, initialPath);
+        queue.add(initialState);
+        visited.put(initialState, 0);
+
+        int cols = initialMatrix[0].length; // Number of columns
+
+        while (!queue.isEmpty()) {
+            State current = queue.poll();
+
+            if (isGoal(current.x, current.y, initialMatrix)) {
+                return current.path;
+            }
+
+            for (int d = 0; d < 4; d++) {
+                int nx = current.x;
+                int ny = current.y;
+                BitSet newGridState = (BitSet) current.gridState.clone();
+                List<String> newPath = new ArrayList<>(current.path);
+                newPath.add(dirNames[d]);
+
+                // Move in the direction until hitting a wall ('1')
+                boolean moved = false;
+                while (true) {
+                    int tx = nx + dx[d];
+                    int ty = ny + dy[d];
+                    if (tx < 0 || tx >= cols || ty < 0 || ty >= initialMatrix.length)
+                        break;
+                    char cell = getGridValue(newGridState, tx, ty, cols);
+                    if (cell == '1')
+                        break;
+
+                    // Leave a trail by turning '0's to '1's
+                    setGridValue(newGridState, nx, ny, '1', cols);
+
+                    nx = tx;
+                    ny = ty;
+                    moved = true;
+
+                    // If we reach the goal 'Y', we can stop moving further in this direction
+                    if (initialMatrix[ny][nx] == 'Y') {
+                        break;
+                    }
+                }
+
+                // Check if movement is possible (did we move?)
+                if (!moved)
+                    continue;
+
+                // Create new state
+                State newState = new State(nx, ny, newGridState, newPath);
+
+                if (visited.containsKey(newState))
+                    continue;
+                visited.put(newState, newPath.size());
+                queue.add(newState);
+            }
+        }
+
+        return null; // No path found
+    }
+
+    private boolean isGoal(int x, int y, char[][] initialMatrix) {
+        return initialMatrix[y][x] == 'Y';
+    }
+
+    private BitSet gridToBitSet(char[][] grid) {
+        int rows = grid.length;
+        int cols = grid[0].length;
+        BitSet bitSet = new BitSet(rows * cols);
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                if (grid[i][j] == '1') {
+                    bitSet.set(i * cols + j);
+                }
+            }
+        }
+        return bitSet;
+    }
+
+    private char getGridValue(BitSet bitSet, int x, int y, int cols) {
+        int index = y * cols + x;
+        return bitSet.get(index) ? '1' : '0';
+    }
+
+    private void setGridValue(BitSet bitSet, int x, int y, char value, int cols) {
+        int index = y * cols + x;
+        if (value == '1') {
+            bitSet.set(index);
+        } else {
+            bitSet.clear(index);
+        }
+    }
+
+    private char[][] deepCopyMatrix(char[][] original) {
+        char[][] copy = new char[original.length][];
+        for (int i = 0; i < original.length; i++) {
+            copy[i] = Arrays.copyOf(original[i], original[i].length);
+        }
+        return copy;
     }
 
     public static void main(String[] args) {
@@ -273,23 +496,23 @@ public class DrawGameCanvas extends JPanel {
                 int choice = JOptionPane.showOptionDialog(null, "Select Player Type:", "Player Selection",
                         JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null, options, options[0]);
 
-                if (choice == 0) { // User Player seçildiğinde
-                    String filePath = "levels/level01.txt"; // Başlangıç seviyesini belirleyin
+                String filePath = "levels/level01.txt"; // Starting level file
+                String levelFolder = "level01"; // Extract level folder from the file path
+                char[][] matrix = readMatrixFromFile(filePath);
 
-                    // filePath'ten levelFolder'ı çıkarma işlemi
-                    String levelFolder = "level01";
+                JFrame frame = new JFrame("Game Canvas");
+                frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+                frame.setSize(500, 500);
+                DrawGameCanvas canvas = new DrawGameCanvas(matrix, levelFolder);
 
-                    int[][] matrix = readMatrixFromFile(filePath);
-                    JFrame frame = new JFrame("Game Canvas");
-                    frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-                    frame.setSize(500, 500);
-                    DrawGameCanvas canvas = new DrawGameCanvas(matrix, levelFolder);
-                    frame.add(canvas);
-                    frame.setVisible(true);
-                } else if (choice == 1) { // AI Player seçildiğinde
-                    JOptionPane.showMessageDialog(null, "AI Player implementation will be added later.", "Info",
-                            JOptionPane.INFORMATION_MESSAGE);
+                frame.add(canvas);
+                frame.setVisible(true);
+
+                if (choice == 1) { // AI Player selected
+                    // Start the AI movement
+                    canvas.startAIMovement();
                 }
+
             } catch (IOException e) {
                 e.printStackTrace();
             }
