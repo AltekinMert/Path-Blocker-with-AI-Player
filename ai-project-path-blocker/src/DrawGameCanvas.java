@@ -7,14 +7,20 @@ import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 public class DrawGameCanvas extends JPanel {
     private int[][] matrix;
-    private final int cellSize = 30; // Boyutlar her bir hücre için
+    private final int cellSize = 30;  // Boyutlar her bir hücre için
     private int playerX, playerY;
+    private String levelFolder;
+    private int moveCount = 0;  // Counter for the number of moves
 
-    public DrawGameCanvas(int[][] matrix) {
+    public DrawGameCanvas(int[][] matrix, String levelFolder) {
         this.matrix = matrix;
+        this.levelFolder = levelFolder;
         // Find the starting position 'X'
         for (int i = 0; i < matrix.length; i++) {
             for (int j = 0; j < matrix[i].length; j++) {
@@ -32,14 +38,15 @@ public class DrawGameCanvas extends JPanel {
                 switch (e.getKeyCode()) {
                     case KeyEvent.VK_W -> movePlayer(0, -1, true); // W key
                     case KeyEvent.VK_A -> movePlayer(-1, 0, true); // A key
-                    case KeyEvent.VK_S -> movePlayer(0, 1, true); // S key
-                    case KeyEvent.VK_D -> movePlayer(1, 0, true); // D key
+                    case KeyEvent.VK_S -> movePlayer(0, 1, true);  // S key
+                    case KeyEvent.VK_D -> movePlayer(1, 0, true);  // D key
                 }
             }
         });
     }
 
     private void movePlayer(int dx, int dy, boolean continuous) {
+        boolean moved = false;
         while (true) {
             int newX = playerX + dx;
             int newY = playerY + dy;
@@ -51,6 +58,7 @@ public class DrawGameCanvas extends JPanel {
                 // Update player position
                 playerX = newX;
                 playerY = newY;
+                moved = true;
             } else {
                 break;
             }
@@ -59,10 +67,12 @@ public class DrawGameCanvas extends JPanel {
                 break;
             }
         }
-        // Repaint the canvas
-        repaint();
-        // Take a screenshot after the move
-        takeScreenshot();
+
+        if (moved) {
+            moveCount++; // Increment the move counter when the player moves
+            repaint();
+            takeScreenshot();
+        }
     }
 
     @Override
@@ -71,13 +81,13 @@ public class DrawGameCanvas extends JPanel {
         for (int i = 0; i < matrix.length; i++) {
             for (int j = 0; j < matrix[i].length; j++) {
                 if (i == playerY && j == playerX) {
-                    g.setColor(Color.YELLOW); // Player position
+                    g.setColor(Color.YELLOW);  // Player position
                 } else if (matrix[i][j] == 1) {
-                    g.setColor(Color.DARK_GRAY); // Duvarlar
+                    g.setColor(Color.DARK_GRAY);  // Duvarlar
                 } else if (matrix[i][j] == 'Y') {
-                    g.setColor(Color.BLACK); // Bitiş noktasi
+                    g.setColor(Color.BLACK);  // Bitiş noktasi
                 } else {
-                    g.setColor(Color.LIGHT_GRAY); // Boş alanlar
+                    g.setColor(Color.LIGHT_GRAY);  // Boş alanlar
                 }
                 g.fillRect(j * cellSize, i * cellSize, cellSize, cellSize);
                 g.setColor(Color.BLACK);
@@ -92,7 +102,13 @@ public class DrawGameCanvas extends JPanel {
         paint(g2d);
         g2d.dispose();
         try {
-            File outputfile = new File("screenshot_" + System.currentTimeMillis() + ".png");
+            // Create the directory if it doesn't exist
+            Path screenshotDir = Paths.get("Screenshots", levelFolder);
+            if (!Files.exists(screenshotDir)) {
+                Files.createDirectories(screenshotDir);
+            }
+            // Save the screenshot with the move count
+            File outputfile = new File(screenshotDir.toFile(), "screenshot_move_" + moveCount + ".png");
             ImageIO.write(image, "png", outputfile);
         } catch (IOException ex) {
             ex.printStackTrace();
@@ -124,12 +140,16 @@ public class DrawGameCanvas extends JPanel {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             try {
-                String filePath = "levels/level01.txt"; // Dosya yolunu burada belirleyin
+                String filePath = "ai-project-path-blocker/levels/level06.txt";  // Dosya yolunu burada belirleyin
+                
+                // filePath'ten levelFolder'ı çıkarma işlemi
+                String levelFolder = filePath.substring(filePath.lastIndexOf("level"), filePath.lastIndexOf(".txt"));
+
                 int[][] matrix = readMatrixFromFile(filePath);
                 JFrame frame = new JFrame("Game Canvas");
                 frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
                 frame.setSize(500, 500);
-                DrawGameCanvas canvas = new DrawGameCanvas(matrix);
+                DrawGameCanvas canvas = new DrawGameCanvas(matrix, levelFolder);
                 frame.add(canvas);
                 frame.setVisible(true);
             } catch (IOException e) {
