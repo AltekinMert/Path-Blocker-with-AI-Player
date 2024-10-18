@@ -5,14 +5,17 @@ import java.awt.image.BufferedImage;
 import java.io.*;
 import javax.imageio.ImageIO;
 import javax.swing.*;
+import javax.swing.Timer;
+import java.util.List;
 import java.util.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import javax.swing.Timer;
-import java.util.List;
 
 public class DrawGameCanvas extends JPanel {
+    private Timer aiTimer; // Add this at the class level
+    // import javax.swing.Timer;
+    // import java.util.List;
     private char[][] matrix;
     private final int cellSize = 30; // Size for each cell
     private int playerX, playerY;
@@ -282,15 +285,12 @@ public class DrawGameCanvas extends JPanel {
     }
 
     // AI Implementation
-    private List<String> aiPath; // The path that the AI will follow
+    private Queue<String> aiPath; // The path that the AI will follow as a queue
     private int aiMoveIndex = 0; // The current move index in the aiPath
 
     public void startAIMovement() {
         isAIPlayer = true;
 
-        // Ensure the matrix is in its initial state before finding the path
-        // Reload the matrix from the file to avoid any modifications made during
-        // gameplay
         try {
             String filePath = "levels/level" + String.format("%02d", currentLevel) + ".txt";
             char[][] initialMatrix = readMatrixFromFile(filePath);
@@ -313,29 +313,29 @@ public class DrawGameCanvas extends JPanel {
             playerY = startY;
 
             // Find the shortest path
-            aiPath = findShortestPath(matrixCopy, startX, startY);
-            if (aiPath == null) {
+            List<String> pathList = findShortestPath(matrixCopy, startX, startY);
+            if (pathList == null) {
                 JOptionPane.showMessageDialog(this, "No path found by AI.", "Info", JOptionPane.INFORMATION_MESSAGE);
                 return;
             }
 
             // Print the path to the console for debugging
-            System.out.println("AI Path for Level " + currentLevel + ": " + String.join(" -> ", aiPath));
+            System.out.println("AI Path for Level " + currentLevel + ": " + String.join(" -> ", pathList));
 
-            // Reset AI movement index
-            aiMoveIndex = 0;
+            // Initialize the queue for AI moves
+            aiPath = new LinkedList<>(pathList);
+
+            // Take the first move immediately before starting the timer
+            if (!aiPath.isEmpty()) {
+                String firstMove = aiPath.poll();
+                performAIMove(firstMove);
+            }
 
             // Use a Timer to perform moves step by step
             Timer timer = new Timer(500, e -> {
-                if (aiMoveIndex < aiPath.size()) {
-                    String move = aiPath.get(aiMoveIndex);
-                    switch (move) {
-                        case "up" -> movePlayer(0, -1, true);
-                        case "down" -> movePlayer(0, 1, true);
-                        case "left" -> movePlayer(-1, 0, true);
-                        case "right" -> movePlayer(1, 0, true);
-                    }
-                    aiMoveIndex++;
+                if (!aiPath.isEmpty()) {
+                    String move = aiPath.poll();
+                    performAIMove(move);
                 } else {
                     ((Timer) e.getSource()).stop();
                 }
@@ -344,6 +344,16 @@ public class DrawGameCanvas extends JPanel {
 
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    // A helper method to move the AI based on the move direction
+    private void performAIMove(String move) {
+        switch (move) {
+            case "up" -> movePlayer(0, -1, true);
+            case "down" -> movePlayer(0, 1, true);
+            case "left" -> movePlayer(-1, 0, true);
+            case "right" -> movePlayer(1, 0, true);
         }
     }
 
