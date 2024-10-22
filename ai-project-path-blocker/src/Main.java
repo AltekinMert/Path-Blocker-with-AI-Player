@@ -1,3 +1,20 @@
+/*
+1) Why you prefer the search algorithm you choose?
+   - I preferred to use the Breadth-First Search (BFS) algorithm because it is simple to implement and guarantees finding the shortest path in an unweighted grid environment like ours. BFS explores all nodes at the present depth before moving on to nodes at the next depth level, making it ideal for finding the minimum number of moves needed to reach the goal ('Y') from the start ('X').
+
+2) Can you achieve the optimal result? Why? Why not?
+   - Yes, we can achieve the optimal result with BFS in this problem because it is designed to find the shortest path in an unweighted environment. Since each move (up, down, left, right) has the same cost (essentially 1), BFS will find the shortest path to the goal without missing any shorter paths.
+
+3) How you achieved efficiency for keeping the states?
+   - Efficiency in keeping states was achieved by using a BitSet to represent the grid state for visited nodes and by using a queue (LinkedList) to store and process states level by level. This reduces memory overhead compared to storing the entire matrix repeatedly and keeps the BFS implementation fast and memory efficient.
+
+4) If you prefer to use DFS (tree version) then do you need to avoid cycles?
+   - Yes, if using Depth-First Search (DFS), it is crucial to avoid cycles. In a grid environment, without cycle detection, DFS could enter infinite loops or revisit the same cells multiple times, resulting in inefficient pathfinding or failure to find the goal.
+
+5) What will be the path-cost for this problem?
+   - The path-cost for this problem is simply the number of moves taken to reach the goal ('Y') from the starting position ('X'). Each move has an equal cost of 1, and BFS ensures that the minimal path-cost (i.e., the shortest path in terms of moves) is found.
+*/
+
 import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
@@ -7,13 +24,14 @@ import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.Timer;
 import java.util.List;
+import java.util.Queue;
 import java.util.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-public class DrawGameCanvas extends JPanel {
-    private Timer aiTimer; // Add this at the class level
+public class Main extends JPanel {
+    private Timer aiTimer;
     // import javax.swing.Timer;
     // import java.util.List;
     private char[][] matrix;
@@ -26,7 +44,7 @@ public class DrawGameCanvas extends JPanel {
     private List<List<int[]>> moveHistory = new ArrayList<>(); // Move history for undo
     private boolean isAIPlayer = false; // Flag to check if AI is playing
 
-    public DrawGameCanvas(char[][] matrix, String levelFolder) {
+    public Main(char[][] matrix, String levelFolder) {
         this.matrix = matrix;
         this.levelFolder = levelFolder;
         initializePlayerPosition();
@@ -137,6 +155,11 @@ public class DrawGameCanvas extends JPanel {
             moveCount = 0;
             repaint();
 
+            // Stop and reset the AI timer before starting a new one
+            if (aiTimer != null) {
+                aiTimer.stop();
+            }
+
             // Reset AI variables and restart AI movement if necessary
             if (isAIPlayer) {
                 aiMoveIndex = 0;
@@ -194,6 +217,11 @@ public class DrawGameCanvas extends JPanel {
                 moveHistory.clear(); // Clear move history
                 moveCount = 0;
                 repaint();
+
+                // Stop and reset the AI timer before starting a new one
+                if (aiTimer != null) {
+                    aiTimer.stop();
+                }
 
                 // Reset AI variables and restart AI movement if necessary
                 if (isAIPlayer) {
@@ -331,8 +359,13 @@ public class DrawGameCanvas extends JPanel {
                 performAIMove(firstMove);
             }
 
-            // Use a Timer to perform moves step by step
-            Timer timer = new Timer(500, e -> {
+            // Stop any existing timer before starting a new one
+            if (aiTimer != null) {
+                aiTimer.stop();
+            }
+
+            // Create and start a new timer for AI movement
+            aiTimer = new Timer(200, e -> {
                 if (!aiPath.isEmpty()) {
                     String move = aiPath.poll();
                     performAIMove(move);
@@ -340,7 +373,7 @@ public class DrawGameCanvas extends JPanel {
                     ((Timer) e.getSource()).stop();
                 }
             });
-            timer.start();
+            aiTimer.start();
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -513,7 +546,7 @@ public class DrawGameCanvas extends JPanel {
                 JFrame frame = new JFrame("Game Canvas");
                 frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
                 frame.setSize(500, 500);
-                DrawGameCanvas canvas = new DrawGameCanvas(matrix, levelFolder);
+                Main canvas = new Main(matrix, levelFolder);
 
                 frame.add(canvas);
                 frame.setVisible(true);
