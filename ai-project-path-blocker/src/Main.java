@@ -365,7 +365,7 @@ public class Main extends JPanel {
             }
 
             // Create and start a new timer for AI movement
-            aiTimer = new Timer(200, e -> {
+            aiTimer = new Timer(0, e -> {
                 if (!aiPath.isEmpty()) {
                     String move = aiPath.poll();
                     performAIMove(move);
@@ -391,6 +391,9 @@ public class Main extends JPanel {
     }
 
     private List<String> findShortestPath(char[][] initialMatrix, int startX, int startY) {
+        // Start time recording before the BFS starts
+        long startTime = System.nanoTime();
+
         // Directions: left, right, up, down
         int[] dx = { -1, 1, 0, 0 };
         int[] dy = { 0, 0, -1, 1 };
@@ -441,6 +444,15 @@ public class Main extends JPanel {
             State current = queue.poll();
 
             if (isGoal(current.x, current.y, initialMatrix)) {
+                // End time recording after the BFS completes
+                long endTime = System.nanoTime();
+
+                // Calculate duration in milliseconds
+                long duration = (endTime - startTime) / 1_000_000;
+
+                // Print the time taken for the BFS search
+                System.out.println("Time taken to find path: " + duration + " ms");
+
                 return current.path;
             }
 
@@ -488,6 +500,11 @@ public class Main extends JPanel {
                 queue.add(newState);
             }
         }
+
+        // End time recording if BFS search fails
+        long endTime = System.nanoTime();
+        long duration = (endTime - startTime) / 1_000_000;
+        System.out.println("BFS search failed to find a path. Time taken: " + duration + " ms");
 
         return null; // No path found
     }
